@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../controller/auth_controller.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -9,6 +9,7 @@ class AuthPage extends StatefulWidget {
 }
 
 class _AuthPageState extends State<AuthPage> {
+  final _controller = AuthController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _username = TextEditingController();
@@ -39,30 +40,16 @@ class _AuthPageState extends State<AuthPage> {
     }
 
     setState(() => _loading = true);
-    try {
-      final supabase = Supabase.instance.client;
-      if (_isSignUp) {
-        await supabase.auth.signUp(
-          email: email,
-          password: password,
-          data: {'username': username, 'display_name': username},
-        );
-        if (mounted && supabase.auth.currentSession == null) {
-          _snack('Check your email to confirm your account.');
-        }
-      } else {
-        await supabase.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
-      }
-    } on AuthException catch (e) {
-      _snack(e.message);
-    } catch (e) {
-      _snack('Something went wrong: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    final error = _isSignUp
+        ? await _controller.signUp(
+            email: email,
+            password: password,
+            username: username,
+          )
+        : await _controller.signIn(email: email, password: password);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (error != null) _snack(error);
   }
 
   void _snack(String msg) {
@@ -150,9 +137,11 @@ class _AuthPageState extends State<AuthPage> {
                     onPressed: _loading
                         ? null
                         : () => setState(() => _isSignUp = !_isSignUp),
-                    child: Text(_isSignUp
-                        ? 'Already have an account? Sign in'
-                        : 'New here? Create an account'),
+                    child: Text(
+                      _isSignUp
+                          ? 'Already have an account? Sign in'
+                          : 'New here? Create an account',
+                    ),
                   ),
                 ],
               ),

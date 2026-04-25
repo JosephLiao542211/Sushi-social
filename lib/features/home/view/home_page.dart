@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import 'session_page.dart';
+import '../controller/home_controller.dart';
+import '../model/session.dart';
+import '../../session/view/session_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,39 +12,22 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _supabase = Supabase.instance.client;
-
-  // Live list of sessions the user can see (enforced by RLS).
-  late final Stream<List<Map<String, dynamic>>> _sessionsStream = _supabase
-      .from('sessions')
-      .stream(primaryKey: ['id'])
-      .order('started_at', ascending: false);
-
-  // Resolved location names, keyed by location_id. Lazy-filled.
+  final _controller = HomeController();
   final Map<String, String> _locationNames = {};
 
-  Future<void> _syncLocationNames(List<Map<String, dynamic>> sessions) async {
+  Future<void> _syncLocationNames(List<Session> sessions) async {
     final missing = sessions
-        .map((s) => s['location_id'] as String?)
+        .map((s) => s.locationId)
         .whereType<String>()
         .where((id) => !_locationNames.containsKey(id))
         .toSet()
         .toList();
     if (missing.isEmpty) return;
     try {
-      final rows = await _supabase
-          .from('locations')
-          .select('id, name')
-          .inFilter('id', missing);
+      final fetched = await _controller.fetchLocationNames(missing);
       if (!mounted) return;
-      setState(() {
-        for (final row in rows) {
-          _locationNames[row['id'] as String] = row['name'] as String;
-        }
-      });
-    } catch (_) {
-      // Non-fatal: a missing location just shows no subtitle.
-    }
+      setState(() => _locationNames.addAll(fetched));
+    } catch (_) {}
   }
 
   Future<void> _createSession() async {
@@ -52,41 +36,13 @@ class _HomePageState extends State<HomePage> {
       builder: (_) => const _CreateSessionDialog(),
     );
     if (result == null) return;
-
     try {
-      String? locationId;
-      final locName = result.locationName.trim();
-      if (locName.isNotEmpty) {
-        final existing = await _supabase
-            .from('locations')
-            .select('id')
-            .ilike('name', locName)
-            .maybeSingle();
-        if (existing != null) {
-          locationId = existing['id'] as String;
-        } else {
-          final inserted = await _supabase
-              .from('locations')
-              .insert({'name': locName})
-              .select('id')
-              .single();
-          locationId = inserted['id'] as String;
-        }
-      }
-
-      final row = await _supabase
-          .from('sessions')
-          .insert({
-            'location_id': locationId,
-            'name': result.name.trim().isEmpty ? null : result.name.trim(),
-          })
-          .select('id')
-          .single();
-
+      final sessionId = await _controller.createSession(
+        name: result.name,
+        locationName: result.locationName,
+      );
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => SessionPage(sessionId: row['id'] as String),
-      ));
+      _goToSession(sessionId);
     } on PostgrestException catch (e) {
       _snack(e.message);
     } catch (e) {
@@ -101,17 +57,18 @@ class _HomePageState extends State<HomePage> {
     );
     if (code == null || code.trim().isEmpty) return;
     try {
-      final sessionId = await _supabase.rpc(
-        'join_session_by_code',
-        params: {'p_code': code.trim().toUpperCase()},
-      );
+      final sessionId = await _controller.joinSession(code);
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => SessionPage(sessionId: sessionId as String),
-      ));
+      _goToSession(sessionId);
     } on PostgrestException catch (e) {
       _snack(e.message);
     }
+  }
+
+  void _goToSession(String sessionId) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SessionPage(sessionId: sessionId),
+    ));
   }
 
   void _snack(String msg) {
@@ -119,8 +76,7 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  String _formatDate(String iso) {
-    final dt = DateTime.tryParse(iso)?.toLocal();
+  String _formatDate(DateTime? dt) {
     if (dt == null) return '';
     final m = dt.month.toString().padLeft(2, '0');
     final d = dt.day.toString().padLeft(2, '0');
@@ -133,17 +89,17 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('🍣 Sushi Social'),
+        title: const Text('🍣 Sushi Social HAAHHAHAAH'),
         actions: [
           IconButton(
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout),
-            onPressed: () => _supabase.auth.signOut(),
+            onPressed: _controller.signOut,
           ),
         ],
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _sessionsStream,
+      body: StreamBuilder<List<Session>>(
+        stream: _controller.sessionsStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
@@ -152,7 +108,6 @@ class _HomePageState extends State<HomePage> {
             return const Center(child: CircularProgressIndicator());
           }
           final sessions = snapshot.data!;
-          // Fire and forget — fills in location names progressively.
           _syncLocationNames(sessions);
 
           if (sessions.isEmpty) {
@@ -179,26 +134,20 @@ class _HomePageState extends State<HomePage> {
             separatorBuilder: (_, _) => const Divider(height: 0),
             itemBuilder: (context, i) {
               final s = sessions[i];
-              final active = s['status'] == 'active';
-              final locId = s['location_id'] as String?;
               final locName =
-                  locId == null ? null : _locationNames[locId];
-              final started = s['started_at'] as String?;
-
+                  s.locationId != null ? _locationNames[s.locationId] : null;
               return ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: active
+                  backgroundColor: s.isActive
                       ? Colors.green.shade100
                       : Theme.of(context).colorScheme.surfaceContainerHighest,
                   child: Icon(
-                    active ? Icons.restaurant : Icons.history,
-                    color: active ? Colors.green.shade800 : Colors.grey,
+                    s.isActive ? Icons.restaurant : Icons.history,
+                    color: s.isActive ? Colors.green.shade800 : Colors.grey,
                   ),
                 ),
                 title: Text(
-                  (s['name'] as String?)?.isNotEmpty == true
-                      ? s['name'] as String
-                      : 'AYCE Session',
+                  s.displayName,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle: Column(
@@ -206,16 +155,14 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     if (locName != null) Text('📍 $locName'),
                     Text(
-                      '${active ? "Active" : "Ended"} • Code ${s['join_code']}'
-                      '${started != null ? " • ${_formatDate(started)}" : ""}',
+                      '${s.isActive ? "Active" : "Ended"} • Code ${s.joinCode}'
+                      '${s.startedAt != null ? " • ${_formatDate(s.startedAt)}" : ""}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SessionPage(sessionId: s['id'] as String),
-                )),
+                onTap: () => _goToSession(s.id),
               );
             },
           );
@@ -252,6 +199,7 @@ class _CreateSessionResult {
 
 class _CreateSessionDialog extends StatefulWidget {
   const _CreateSessionDialog();
+
   @override
   State<_CreateSessionDialog> createState() => _CreateSessionDialogState();
 }
@@ -309,6 +257,7 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
 
 class _JoinSessionDialog extends StatefulWidget {
   const _JoinSessionDialog();
+
   @override
   State<_JoinSessionDialog> createState() => _JoinSessionDialogState();
 }
