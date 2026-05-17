@@ -98,7 +98,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: StreamBuilder<List<Session>>(
+      body: StreamBuilder<List<session>>(
         stream: _controller.sessionsStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
