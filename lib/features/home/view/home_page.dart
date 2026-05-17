@@ -89,7 +89,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('🍣 Sushi Social HAAHHAHAAH'),
+        title: const Text('🍣 Sushi Social ssahdhashdashdhahsdhashdha'),
         actions: [
           IconButton(
             tooltip: 'Sign out',
