@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'features/auth/service/oauth_service.dart';
 import 'features/auth/view/auth_page.dart';
 import 'features/home/view/home_page.dart';
 
@@ -42,16 +43,17 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  late final Stream<AuthState> _authStream =
-      Supabase.instance.client.auth.onAuthStateChange;
+  final _oauthService = OAuthService.instance;
+  late final Stream<AuthState> _authStream = _oauthService.authStateChanges;
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<AuthState>(
       stream: _authStream,
       builder: (context, _) {
-        final session = Supabase.instance.client.auth.currentSession;
-        return session == null ? const AuthPage() : const HomePage();
+        return _oauthService.currentSession == null
+            ? const AuthPage()
+            : const HomePage();
       },
     );
   }

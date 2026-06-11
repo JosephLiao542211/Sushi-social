@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../controller/home_controller.dart';
-import '../model/session.dart';
+import '../model/session.dart' as home_model;
 import '../../session/view/session_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -15,7 +15,7 @@ class _HomePageState extends State<HomePage> {
   final _controller = HomeController();
   final Map<String, String> _locationNames = {};
 
-  Future<void> _syncLocationNames(List<Session> sessions) async {
+  Future<void> _syncLocationNames(List<home_model.Session> sessions) async {
     final missing = sessions
         .map((s) => s.locationId)
         .whereType<String>()
@@ -98,7 +98,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: StreamBuilder<List<session>>(
+      body: StreamBuilder<List<home_model.Session>>(
         stream: _controller.sessionsStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {

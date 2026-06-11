@@ -52,6 +52,16 @@ class _AuthPageState extends State<AuthPage> {
     if (error != null) _snack(error);
   }
 
+  Future<void> _signInWithGoogle() async {
+    if (_loading) return;
+
+    setState(() => _loading = true);
+    final error = await _controller.signInWithGoogle();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (error != null) _snack(error);
+  }
+
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -79,8 +89,8 @@ class _AuthPageState extends State<AuthPage> {
                     'Sushi Social',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -132,6 +142,11 @@ class _AuthPageState extends State<AuthPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(_isSignUp ? 'Sign up' : 'Sign in'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: _loading ? null : _signInWithGoogle,
+                    child: const Text('Continue with Google'),
                   ),
                   TextButton(
                     onPressed: _loading

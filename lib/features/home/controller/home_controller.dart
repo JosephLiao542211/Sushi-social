@@ -1,23 +1,23 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../model/session.dart';
+import '../../auth/service/oauth_service.dart';
+import '../model/session.dart' as home_model;
 
 class HomeController {
   final _supabase = Supabase.instance.client;
+  final _oauthService = OAuthService.instance;
 
-  Stream<List<Session>> get sessionsStream => _supabase
+  Stream<List<home_model.Session>> get sessionsStream => _supabase
       .from('sessions')
       .stream(primaryKey: ['id'])
       .order('started_at', ascending: false)
-      .map((rows) => rows.map(Session.fromMap).toList());
+      .map((rows) => rows.map(home_model.Session.fromMap).toList());
 
   Future<Map<String, String>> fetchLocationNames(List<String> ids) async {
     final rows = await _supabase
         .from('locations')
         .select('id, name')
         .inFilter('id', ids);
-    return {
-      for (final row in rows) row['id'] as String: row['name'] as String,
-    };
+    return {for (final row in rows) row['id'] as String: row['name'] as String};
   }
 
   Future<String> createSession({
@@ -63,5 +63,5 @@ class HomeController {
     return id as String;
   }
 
-  void signOut() => _supabase.auth.signOut();
+  void signOut() => _oauthService.signOut();
 }
