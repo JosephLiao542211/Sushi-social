@@ -37,7 +37,7 @@ class SessionController {
       locName = loc?['name'] as String?;
     }
 
-    return (session: row as Map<String, dynamic>, locationName: locName);
+    return (session: row, locationName: locName);
   }
 
   Future<Map<String, Map<String, dynamic>>> fetchProfiles(
@@ -47,7 +47,7 @@ class SessionController {
         .select('id, username, display_name')
         .inFilter('id', ids);
     return {
-      for (final row in rows) row['id'] as String: row as Map<String, dynamic>,
+      for (final row in rows) row['id'] as String: row,
     };
   }
 

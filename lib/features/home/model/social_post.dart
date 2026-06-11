@@ -1,27 +1,87 @@
 class SocialPost {
+  final String id;
+  final String authorId;
   final String name;
   final String handle;
-  final String place;
-  final String timeAgo;
+  final String? avatarUrl;
+  final String? place;
+  final DateTime createdAt;
   final String imageUrl;
+  final String? photoBucket;
+  final String? photoObjectPath;
   final int plates;
-  final int record;
   final String caption;
   final int likes;
   final int comments;
+  final bool likedByMe;
 
   const SocialPost({
+    required this.id,
+    required this.authorId,
     required this.name,
     required this.handle,
+    required this.avatarUrl,
     required this.place,
-    required this.timeAgo,
+    required this.createdAt,
     required this.imageUrl,
+    required this.photoBucket,
+    required this.photoObjectPath,
     required this.plates,
-    required this.record,
     required this.caption,
     required this.likes,
     required this.comments,
+    required this.likedByMe,
   });
+
+  factory SocialPost.fromMap(Map<String, dynamic> map) {
+    final username = map['author_username'] as String? ?? 'sushi_friend';
+    return SocialPost(
+      id: map['id'] as String,
+      authorId: map['author_id'] as String,
+      name: map['author_name'] as String? ?? username,
+      handle: '@$username',
+      avatarUrl: map['author_avatar_url'] as String?,
+      place: map['location_name'] as String?,
+      createdAt: DateTime.parse(map['created_at'] as String).toLocal(),
+      imageUrl: map['photo_url'] as String,
+      photoBucket: map['photo_bucket'] as String?,
+      photoObjectPath: map['photo_object_path'] as String?,
+      plates: map['plate_count'] as int? ?? 0,
+      caption: map['caption'] as String? ?? '',
+      likes: map['like_count'] as int? ?? 0,
+      comments: map['comment_count'] as int? ?? 0,
+      likedByMe: map['liked_by_me'] as bool? ?? false,
+    );
+  }
+
+  SocialPost copyWith({String? imageUrl}) {
+    return SocialPost(
+      id: id,
+      authorId: authorId,
+      name: name,
+      handle: handle,
+      avatarUrl: avatarUrl,
+      place: place,
+      createdAt: createdAt,
+      imageUrl: imageUrl ?? this.imageUrl,
+      photoBucket: photoBucket,
+      photoObjectPath: photoObjectPath,
+      plates: plates,
+      caption: caption,
+      likes: likes,
+      comments: comments,
+      likedByMe: likedByMe,
+    );
+  }
+
+  String get timeAgo {
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m';
+    if (diff.inDays < 1) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${createdAt.month}/${createdAt.day}/${createdAt.year}';
+  }
 }
 
 class LeaderboardEntry {
@@ -37,76 +97,3 @@ class LeaderboardEntry {
     required this.imageUrl,
   });
 }
-
-const socialPosts = [
-  SocialPost(
-    name: 'Maya Chen',
-    handle: '@maki_maya',
-    place: 'Kibo Sushi House',
-    timeAgo: '12m',
-    imageUrl:
-        'https://images.unsplash.com/photo-1617196034183-421b4917c92d?auto=format&fit=crop&w=1200&q=80',
-    plates: 47,
-    record: 47,
-    caption: 'New house record. Salmon nigiri carried the final stretch.',
-    likes: 128,
-    comments: 18,
-  ),
-  SocialPost(
-    name: 'Theo Park',
-    handle: '@rolltheo',
-    place: 'Miku Roll Bar',
-    timeAgo: '34m',
-    imageUrl:
-        'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=1200&q=80',
-    plates: 41,
-    record: 44,
-    caption: 'Clean run, no wasted plates, spicy tuna stayed undefeated.',
-    likes: 91,
-    comments: 11,
-  ),
-  SocialPost(
-    name: 'Jules Rivera',
-    handle: '@jules_vs_ayce',
-    place: 'Sakura AYCE',
-    timeAgo: '1h',
-    imageUrl:
-        'https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=1200&q=80',
-    plates: 58,
-    record: 58,
-    caption: 'Leaderboard reset. Still thinking about the dragon rolls.',
-    likes: 214,
-    comments: 32,
-  ),
-];
-
-const leaderboard = [
-  LeaderboardEntry(
-    name: 'Jules',
-    place: 'Sakura AYCE',
-    plates: 58,
-    imageUrl:
-        'https://images.unsplash.com/photo-1553621042-f6e147245754?auto=format&fit=crop&w=300&q=80',
-  ),
-  LeaderboardEntry(
-    name: 'Maya',
-    place: 'Kibo Sushi House',
-    plates: 47,
-    imageUrl:
-        'https://images.unsplash.com/photo-1617196034183-421b4917c92d?auto=format&fit=crop&w=300&q=80',
-  ),
-  LeaderboardEntry(
-    name: 'Theo',
-    place: 'Miku Roll Bar',
-    plates: 44,
-    imageUrl:
-        'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=300&q=80',
-  ),
-  LeaderboardEntry(
-    name: 'Priya',
-    place: 'Nori Social',
-    plates: 36,
-    imageUrl:
-        'https://images.unsplash.com/photo-1583623025817-d180a2221d0a?auto=format&fit=crop&w=300&q=80',
-  ),
-];

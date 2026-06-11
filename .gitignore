@@ -28,4 +28,7 @@ doc/api/
 .flutter-plugins
 .flutter-plugins-dependencies
 
+# Supabase CLI local project metadata
+supabase/.temp/
+
 .claude
