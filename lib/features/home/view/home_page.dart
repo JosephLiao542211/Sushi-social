@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../session/view/session_page.dart';
 import '../controller/home_controller.dart';
-import '../model/sushi_place.dart';
+import '../model/location.dart';
 import 'feed_page.dart';
 import 'map_page.dart';
 import 'profile_page.dart';
@@ -19,10 +19,10 @@ class _HomePageState extends State<HomePage> {
   final _controller = HomeController();
   int _pageIndex = 0;
 
-  Future<void> _startSession([SushiPlace? place]) async {
+  Future<void> _startSession([SushiLocation? location]) async {
     final result = await showDialog<_CreateSessionResult>(
       context: context,
-      builder: (_) => _CreateSessionDialog(place: place),
+      builder: (_) => _CreateSessionDialog(location: location),
     );
     if (result == null) return;
 
@@ -30,6 +30,7 @@ class _HomePageState extends State<HomePage> {
       final sessionId = await _controller.createSession(
         name: result.name,
         locationName: result.locationName,
+        locationId: result.locationId,
       );
       if (!mounted) return;
       _goToSession(sessionId);
@@ -71,7 +72,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final pages = [
       const FeedPage(),
-      MapPage(onStartSession: _startSession),
+      MapPage(controller: _controller, onStartSession: _startSession),
       const ProfilePage(),
     ];
 
@@ -127,14 +128,15 @@ class _HomePageState extends State<HomePage> {
 class _CreateSessionResult {
   final String name;
   final String locationName;
+  final String? locationId;
 
-  const _CreateSessionResult(this.name, this.locationName);
+  const _CreateSessionResult(this.name, this.locationName, this.locationId);
 }
 
 class _CreateSessionDialog extends StatefulWidget {
-  final SushiPlace? place;
+  final SushiLocation? location;
 
-  const _CreateSessionDialog({this.place});
+  const _CreateSessionDialog({this.location});
 
   @override
   State<_CreateSessionDialog> createState() => _CreateSessionDialogState();
@@ -147,7 +149,7 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
   @override
   void initState() {
     super.initState();
-    _location = TextEditingController(text: widget.place?.name ?? '');
+    _location = TextEditingController(text: widget.location?.name ?? '');
   }
 
   @override
@@ -189,7 +191,11 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
         FilledButton.icon(
           onPressed: () => Navigator.of(
             context,
-          ).pop(_CreateSessionResult(_name.text, _location.text)),
+          ).pop(_CreateSessionResult(
+            _name.text,
+            _location.text,
+            widget.location?.id,
+          )),
           icon: const Icon(Icons.play_arrow),
           label: const Text('Start'),
         ),

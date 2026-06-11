@@ -1,61 +1,97 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
-import '../model/sushi_place.dart';
+import '../controller/home_controller.dart';
+import '../model/location.dart';
 
 class MapPage extends StatefulWidget {
-  final ValueChanged<SushiPlace> onStartSession;
+  final HomeController controller;
+  final ValueChanged<SushiLocation> onStartSession;
 
-  const MapPage({super.key, required this.onStartSession});
+  const MapPage({
+    super.key,
+    required this.controller,
+    required this.onStartSession,
+  });
 
   @override
   State<MapPage> createState() => _MapPageState();
 }
 
 class _MapPageState extends State<MapPage> {
-  SushiPlace _selected = sushiPlaces.first;
+  static const _defaultCenter = LatLng(43.6532, -79.3832);
 
-  void _selectPlace(SushiPlace place) {
-    setState(() => _selected = place);
+  late Future<List<SushiLocation>> _locationsFuture =
+      widget.controller.fetchLocations();
+  SushiLocation? _selected;
+
+  Future<void> _refresh() async {
+    final nextLocations = widget.controller.fetchLocations();
+    setState(() {
+      _locationsFuture = nextLocations;
+    });
+    await nextLocations;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          flex: 5,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: _MapCanvas(selected: _selected, onSelected: _selectPlace),
-          ),
-        ),
-        Expanded(
-          flex: 4,
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-            itemCount: sushiPlaces.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final place = sushiPlaces[index];
-              return _PlaceTile(
-                place: place,
-                selected: place == _selected,
-                onTap: () => _selectPlace(place),
-                onStart: () => widget.onStartSession(place),
-              );
-            },
-          ),
-        ),
-      ],
+    return FutureBuilder<List<SushiLocation>>(
+      future: _locationsFuture,
+      builder: (context, snapshot) {
+        final locations = snapshot.data ?? const <SushiLocation>[];
+        final mappedLocations = locations
+            .where((location) => location.hasCoordinates)
+            .toList();
+
+        return Column(
+          children: [
+            Expanded(
+              flex: 5,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: _LocationMap(
+                  locations: mappedLocations,
+                  selected: _selected,
+                  onSelected: (location) {
+                    setState(() => _selected = location);
+                  },
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 4,
+              child: _LocationsPanel(
+                loading: snapshot.connectionState == ConnectionState.waiting,
+                error: snapshot.error,
+                locations: locations,
+                selected: _selected,
+                onRefresh: _refresh,
+                onSelected: (location) {
+                  setState(() => _selected = location);
+                },
+                onStartSession: widget.onStartSession,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-class _MapCanvas extends StatelessWidget {
-  final SushiPlace selected;
-  final ValueChanged<SushiPlace> onSelected;
+class _LocationMap extends StatelessWidget {
+  static const _defaultCenter = LatLng(43.6532, -79.3832);
 
-  const _MapCanvas({required this.selected, required this.onSelected});
+  final List<SushiLocation> locations;
+  final SushiLocation? selected;
+  final ValueChanged<SushiLocation> onSelected;
+
+  const _LocationMap({
+    required this.locations,
+    required this.selected,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -65,108 +101,217 @@ class _MapCanvas extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Stack(
         children: [
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _MapPainter(
-                land: colors.surfaceContainerHighest,
-                road: colors.outlineVariant,
-                water: colors.tertiaryContainer,
-              ),
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: _center,
+              initialZoom: locations.isEmpty ? 12 : 13,
+              minZoom: 3,
+              maxZoom: 18,
             ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.sushi_social',
+              ),
+              MarkerLayer(
+                markers: [
+                  for (final location in locations)
+                    Marker(
+                      point: LatLng(location.latitude!, location.longitude!),
+                      width: 44,
+                      height: 44,
+                      child: _LocationMarker(
+                        selected: selected?.id == location.id,
+                        onTap: () => onSelected(location),
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ),
           Positioned(
-            left: 14,
-            top: 14,
-            right: 14,
+            left: 12,
+            right: 12,
+            top: 12,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: colors.surface.withValues(alpha: .92),
+                color: colors.surface.withValues(alpha: .94),
                 borderRadius: BorderRadius.circular(8),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ],
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
-                    Icon(Icons.search, size: 18),
+                    Icon(Icons.map_outlined, size: 18),
                     SizedBox(width: 8),
-                    Expanded(child: Text('Nearby sushi places')),
-                    Icon(Icons.tune, size: 18),
+                    Expanded(child: Text('Sushi locations')),
                   ],
                 ),
               ),
             ),
           ),
-          for (final place in sushiPlaces)
+          if (locations.isEmpty)
             Positioned(
-              left: 24 + place.x * 260,
-              top: 64 + place.y * 220,
-              child: _MapPin(
-                place: place,
-                selected: place == selected,
-                onTap: () => onSelected(place),
+              left: 24,
+              right: 24,
+              bottom: 24,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: .94),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text(
+                    'No mapped locations yet. Add latitude and longitude to locations in Supabase to show pins here.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ),
             ),
         ],
       ),
     );
   }
+
+  LatLng get _center {
+    final selectedLocation = selected;
+    if (selectedLocation?.hasCoordinates == true) {
+      return LatLng(selectedLocation!.latitude!, selectedLocation.longitude!);
+    }
+    if (locations.isNotEmpty) {
+      return LatLng(locations.first.latitude!, locations.first.longitude!);
+    }
+    return _defaultCenter;
+  }
 }
 
-class _MapPin extends StatelessWidget {
-  final SushiPlace place;
+class _LocationMarker extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _MapPin({
-    required this.place,
-    required this.selected,
-    required this.onTap,
-  });
+  const _LocationMarker({required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
     return Tooltip(
-      message: place.name,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          height: selected ? 44 : 36,
-          width: selected ? 44 : 36,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: selected ? colors.primary : colors.surface,
-            border: Border.all(color: colors.primary, width: 2),
-            boxShadow: const [
-              BoxShadow(
-                blurRadius: 12,
-                color: Color(0x33000000),
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Icon(
-            Icons.restaurant,
-            color: selected ? colors.onPrimary : colors.primary,
-            size: selected ? 22 : 18,
-          ),
+      message: 'Sushi location',
+      child: IconButton.filled(
+        onPressed: onTap,
+        style: IconButton.styleFrom(
+          backgroundColor: selected ? colors.primary : colors.surface,
+          foregroundColor: selected ? colors.onPrimary : colors.primary,
+          side: BorderSide(color: colors.primary, width: 2),
         ),
+        icon: const Icon(Icons.restaurant),
       ),
     );
   }
 }
 
-class _PlaceTile extends StatelessWidget {
-  final SushiPlace place;
+class _LocationsPanel extends StatelessWidget {
+  final bool loading;
+  final Object? error;
+  final List<SushiLocation> locations;
+  final SushiLocation? selected;
+  final Future<void> Function() onRefresh;
+  final ValueChanged<SushiLocation> onSelected;
+  final ValueChanged<SushiLocation> onStartSession;
+
+  const _LocationsPanel({
+    required this.loading,
+    required this.error,
+    required this.locations,
+    required this.selected,
+    required this.onRefresh,
+    required this.onSelected,
+    required this.onStartSession,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 40),
+              const SizedBox(height: 12),
+              Text('$error', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: onRefresh, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      );
+    }
+    if (locations.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 96),
+          children: const [
+            SizedBox(height: 32),
+            Icon(Icons.location_off_outlined, size: 44),
+            SizedBox(height: 12),
+            Text(
+              'No locations yet',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'The database is ready. Locations added in Supabase will appear here.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+        itemCount: locations.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final location = locations[index];
+          return _LocationTile(
+            location: location,
+            selected: selected?.id == location.id,
+            onTap: () => onSelected(location),
+            onStart: () => onStartSession(location),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _LocationTile extends StatelessWidget {
+  final SushiLocation location;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onStart;
 
-  const _PlaceTile({
-    required this.place,
+  const _LocationTile({
+    required this.location,
     required this.selected,
     required this.onTap,
     required this.onStart,
@@ -181,125 +326,31 @@ class _PlaceTile extends StatelessWidget {
       color: selected
           ? colors.primaryContainer
           : colors.surfaceContainerHighest,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+      child: ListTile(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: colors.surface,
-                child: const Icon(Icons.set_meal),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      place.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${place.area}  ${place.distance}  ${place.price}  ${place.rating}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Top: ${place.topEater} with ${place.topRecord} plates',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${place.activeSessions}',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text('live', style: Theme.of(context).textTheme.labelSmall),
-                ],
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                tooltip: 'Start session',
-                onPressed: onStart,
-                icon: const Icon(Icons.add),
-              ),
-            ],
-          ),
+        leading: CircleAvatar(
+          backgroundColor: colors.surface,
+          child: const Icon(Icons.set_meal),
+        ),
+        title: Text(
+          location.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          location.hasCoordinates
+              ? '${location.subtitle}\n${location.latitude}, ${location.longitude}'
+              : '${location.subtitle}\nCoordinates missing',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: IconButton.filled(
+          tooltip: 'Start session',
+          onPressed: onStart,
+          icon: const Icon(Icons.add),
         ),
       ),
     );
-  }
-}
-
-class _MapPainter extends CustomPainter {
-  final Color land;
-  final Color road;
-  final Color water;
-
-  const _MapPainter({
-    required this.land,
-    required this.road,
-    required this.water,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = land);
-
-    final waterPath = Path()
-      ..moveTo(size.width * .78, 0)
-      ..quadraticBezierTo(size.width * .92, size.height * .28, size.width, .0)
-      ..lineTo(size.width, size.height)
-      ..quadraticBezierTo(
-        size.width * .80,
-        size.height * .78,
-        size.width * .86,
-        size.height,
-      )
-      ..close();
-    canvas.drawPath(waterPath, Paint()..color = water);
-
-    final roadPaint = Paint()
-      ..color = road
-      ..strokeWidth = 9
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(size.width * .08, size.height * .25),
-      Offset(size.width * .88, size.height * .48),
-      roadPaint,
-    );
-    canvas.drawLine(
-      Offset(size.width * .18, size.height * .86),
-      Offset(size.width * .72, size.height * .08),
-      roadPaint,
-    );
-    canvas.drawLine(
-      Offset(size.width * .02, size.height * .62),
-      Offset(size.width * .76, size.height * .72),
-      roadPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _MapPainter oldDelegate) {
-    return oldDelegate.land != land ||
-        oldDelegate.road != road ||
-        oldDelegate.water != water;
   }
 }

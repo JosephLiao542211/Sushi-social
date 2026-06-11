@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/service/oauth_service.dart';
+import '../model/location.dart';
 import '../model/session.dart' as home_model;
 
 class HomeController {
@@ -20,34 +21,43 @@ class HomeController {
     return {for (final row in rows) row['id'] as String: row['name'] as String};
   }
 
+  Future<List<SushiLocation>> fetchLocations() async {
+    final rows = await _supabase
+        .from('locations')
+        .select('id, name, address, city, latitude, longitude')
+        .order('name');
+    return rows.map(SushiLocation.fromMap).toList();
+  }
+
   Future<String> createSession({
     required String name,
     required String locationName,
+    String? locationId,
   }) async {
-    String? locationId;
+    var resolvedLocationId = locationId;
     final locName = locationName.trim();
-    if (locName.isNotEmpty) {
+    if (resolvedLocationId == null && locName.isNotEmpty) {
       final existing = await _supabase
           .from('locations')
           .select('id')
           .ilike('name', locName)
           .maybeSingle();
       if (existing != null) {
-        locationId = existing['id'] as String;
+        resolvedLocationId = existing['id'] as String;
       } else {
         final inserted = await _supabase
             .from('locations')
             .insert({'name': locName})
             .select('id')
             .single();
-        locationId = inserted['id'] as String;
+        resolvedLocationId = inserted['id'] as String;
       }
     }
 
     final row = await _supabase
         .from('sessions')
         .insert({
-          'location_id': locationId,
+          'location_id': resolvedLocationId,
           'name': name.trim().isEmpty ? null : name.trim(),
         })
         .select('id')
