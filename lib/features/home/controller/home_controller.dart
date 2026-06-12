@@ -24,7 +24,9 @@ class HomeController {
   Future<List<SushiLocation>> fetchLocations() async {
     final rows = await _supabase
         .from('locations')
-        .select('id, name, address, city, latitude, longitude')
+        .select(
+          'id, name, address, city, latitude, longitude, google_place_id, formatted_address, rating, user_rating_count, price_level, business_status, google_maps_uri',
+        )
         .order('name');
     return rows.map(SushiLocation.fromMap).toList();
   }

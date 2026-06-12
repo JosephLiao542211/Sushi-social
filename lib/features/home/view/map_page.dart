@@ -336,9 +336,13 @@ class _LocationTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          location.hasCoordinates
-              ? '${location.subtitle}\n${location.latitude}, ${location.longitude}'
-              : '${location.subtitle}\nCoordinates missing',
+          [
+            location.subtitle,
+            if (location.rating != null)
+              '${location.rating} stars'
+                  '${location.userRatingCount == null ? '' : ' (${location.userRatingCount})'}',
+            if (!location.hasCoordinates) 'Coordinates missing',
+          ].join('\n'),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
