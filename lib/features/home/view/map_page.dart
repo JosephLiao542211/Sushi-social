@@ -20,10 +20,8 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
-  static const _defaultCenter = LatLng(43.6532, -79.3832);
-
-  late Future<List<SushiLocation>> _locationsFuture =
-      widget.controller.fetchLocations();
+  late Future<List<SushiLocation>> _locationsFuture = widget.controller
+      .fetchLocations();
   SushiLocation? _selected;
 
   Future<void> _refresh() async {
@@ -110,8 +108,7 @@ class _LocationMap extends StatelessWidget {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.sushi_social',
               ),
               MarkerLayer(

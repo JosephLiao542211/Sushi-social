@@ -189,13 +189,13 @@ class _CreateSessionDialogState extends State<_CreateSessionDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton.icon(
-          onPressed: () => Navigator.of(
-            context,
-          ).pop(_CreateSessionResult(
-            _name.text,
-            _location.text,
-            widget.location?.id,
-          )),
+          onPressed: () => Navigator.of(context).pop(
+            _CreateSessionResult(
+              _name.text,
+              _location.text,
+              widget.location?.id,
+            ),
+          ),
           icon: const Icon(Icons.play_arrow),
           label: const Text('Start'),
         ),
