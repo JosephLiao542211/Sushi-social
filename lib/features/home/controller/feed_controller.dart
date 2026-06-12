@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../model/friend_session.dart';
 import '../model/social_post.dart';
 
 class FeedController {
@@ -15,6 +16,35 @@ class FeedController {
         .limit(50);
     final posts = rows.map(SocialPost.fromMap).toList();
     return _withSignedPhotoUrls(posts);
+  }
+
+  Future<List<FriendSession>> fetchActiveFriendSessions() async {
+    final rows = await _supabase.rpc('active_friend_sessions');
+    return (rows as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .map(FriendSession.fromMap)
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> addFriendByUsername(String username) async {
+    final trimmed = username.trim();
+    if (trimmed.isEmpty) {
+      throw const AuthException('Enter a username.');
+    }
+
+    final rows = await _supabase.rpc(
+      'add_friend_by_username',
+      params: {'p_username': trimmed},
+    );
+    return (rows as List<dynamic>).cast<Map<String, dynamic>>().first;
+  }
+
+  Future<String> joinFriendSession(String sessionId) async {
+    final id = await _supabase.rpc(
+      'join_friend_session',
+      params: {'p_session_id': sessionId},
+    );
+    return id as String;
   }
 
   Future<void> createPost({

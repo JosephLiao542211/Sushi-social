@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../session/view/session_page.dart';
 import '../controller/feed_controller.dart';
+import '../model/friend_session.dart';
 import '../model/social_post.dart';
 
 class FeedPage extends StatefulWidget {
@@ -14,10 +16,21 @@ class FeedPage extends StatefulWidget {
 
 class _FeedPageState extends State<FeedPage> {
   final _controller = FeedController();
-  late Future<List<SocialPost>> _feedFuture = _controller.fetchFeed();
+  late Future<_FeedData> _feedFuture = _fetchFeedData();
+
+  Future<_FeedData> _fetchFeedData() async {
+    final results = await Future.wait([
+      _controller.fetchFeed(),
+      _controller.fetchActiveFriendSessions(),
+    ]);
+    return _FeedData(
+      posts: results[0] as List<SocialPost>,
+      friendSessions: results[1] as List<FriendSession>,
+    );
+  }
 
   Future<void> _refresh() async {
-    final nextFeed = _controller.fetchFeed();
+    final nextFeed = _fetchFeedData();
     setState(() {
       _feedFuture = nextFeed;
     });
@@ -43,6 +56,42 @@ class _FeedPageState extends State<FeedPage> {
       _snack(e.message);
     } catch (e) {
       _snack('Could not create post: $e');
+    }
+  }
+
+  Future<void> _addFriend() async {
+    final username = await showDialog<String>(
+      context: context,
+      builder: (_) => const _AddFriendDialog(),
+    );
+    if (username == null || username.trim().isEmpty) return;
+
+    try {
+      final friend = await _controller.addFriendByUsername(username);
+      await _refresh();
+      final name =
+          (friend['display_name'] as String?)?.trim().isNotEmpty == true
+          ? friend['display_name'] as String
+          : friend['username'] as String;
+      _snack('$name added as a friend');
+    } on PostgrestException catch (e) {
+      _snack(e.message);
+    } catch (e) {
+      _snack('Could not add friend: $e');
+    }
+  }
+
+  Future<void> _joinFriendSession(FriendSession session) async {
+    try {
+      final sessionId = await _controller.joinFriendSession(session.sessionId);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => SessionPage(sessionId: sessionId)),
+      );
+    } on PostgrestException catch (e) {
+      _snack(e.message);
+    } catch (e) {
+      _snack('Could not join session: $e');
     }
   }
 
@@ -77,7 +126,7 @@ class _FeedPageState extends State<FeedPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<SocialPost>>(
+    return FutureBuilder<_FeedData>(
       future: _feedFuture,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -90,7 +139,8 @@ class _FeedPageState extends State<FeedPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final posts = snapshot.data!;
+        final feed = snapshot.data!;
+        final posts = feed.posts;
         final leaderboard = _leaderboardFrom(posts);
 
         return RefreshIndicator(
@@ -102,7 +152,10 @@ class _FeedPageState extends State<FeedPage> {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: _FeedHeader(
                     entries: leaderboard,
+                    friendSessions: feed.friendSessions,
                     onCreatePost: _createPost,
+                    onAddFriend: _addFriend,
+                    onJoinFriendSession: _joinFriendSession,
                   ),
                 ),
               ),
@@ -154,9 +207,18 @@ class _FeedPageState extends State<FeedPage> {
 
 class _FeedHeader extends StatelessWidget {
   final List<LeaderboardEntry> entries;
+  final List<FriendSession> friendSessions;
   final VoidCallback onCreatePost;
+  final VoidCallback onAddFriend;
+  final ValueChanged<FriendSession> onJoinFriendSession;
 
-  const _FeedHeader({required this.entries, required this.onCreatePost});
+  const _FeedHeader({
+    required this.entries,
+    required this.friendSessions,
+    required this.onCreatePost,
+    required this.onAddFriend,
+    required this.onJoinFriendSession,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -172,6 +234,12 @@ class _FeedHeader extends StatelessWidget {
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const Spacer(),
+            IconButton(
+              tooltip: 'Add friend',
+              onPressed: onAddFriend,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+            ),
+            const SizedBox(width: 4),
             FilledButton.icon(
               onPressed: onCreatePost,
               icon: const Icon(Icons.add_a_photo, size: 18),
@@ -180,8 +248,152 @@ class _FeedHeader extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
+        _FriendSessions(
+          sessions: friendSessions,
+          onAddFriend: onAddFriend,
+          onJoin: onJoinFriendSession,
+        ),
+        const SizedBox(height: 16),
         _Leaderboard(entries: entries),
       ],
+    );
+  }
+}
+
+class _FriendSessions extends StatelessWidget {
+  final List<FriendSession> sessions;
+  final VoidCallback onAddFriend;
+  final ValueChanged<FriendSession> onJoin;
+
+  const _FriendSessions({
+    required this.sessions,
+    required this.onAddFriend,
+    required this.onJoin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Card(
+      elevation: 0,
+      color: colors.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.groups_2_outlined,
+                  color: colors.onSecondaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Friends are eating now',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: colors.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onAddFriend,
+                  icon: const Icon(Icons.person_add_alt_1, size: 18),
+                  label: const Text('Add'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (sessions.isEmpty)
+              Text(
+                'Add friends by username to see their active sessions here.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.onSecondaryContainer,
+                ),
+              )
+            else
+              SizedBox(
+                height: 112,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: sessions.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final session = sessions[index];
+                    return SizedBox(
+                      width: 240,
+                      child: Card(
+                        elevation: 0,
+                        color: colors.surface,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundImage:
+                                        session.hostAvatarUrl == null
+                                        ? null
+                                        : NetworkImage(session.hostAvatarUrl!),
+                                    child: session.hostAvatarUrl == null
+                                        ? Text(session.hostName.substring(0, 1))
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      session.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                session.locationName?.trim().isNotEmpty == true
+                                    ? '${session.hostName} at ${session.locationName}'
+                                    : '@${session.hostUsername}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const Spacer(),
+                              Row(
+                                children: [
+                                  Text(
+                                    '${session.participantCount} joined',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                  const Spacer(),
+                                  FilledButton.tonalIcon(
+                                    onPressed: () => onJoin(session),
+                                    icon: const Icon(Icons.login, size: 18),
+                                    label: const Text('Join'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -489,6 +701,51 @@ class _CreatePostDialogState extends State<_CreatePostDialog> {
   }
 }
 
+class _AddFriendDialog extends StatefulWidget {
+  const _AddFriendDialog();
+
+  @override
+  State<_AddFriendDialog> createState() => _AddFriendDialogState();
+}
+
+class _AddFriendDialogState extends State<_AddFriendDialog> {
+  final _username = TextEditingController();
+
+  @override
+  void dispose() {
+    _username.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add friend'),
+      content: TextField(
+        controller: _username,
+        autofocus: true,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(
+          labelText: 'Username',
+          hintText: 'sushi_friend',
+        ),
+        onSubmitted: (_) => Navigator.of(context).pop(_username.text),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).pop(_username.text),
+          icon: const Icon(Icons.person_add_alt_1),
+          label: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
 class _CommentDialog extends StatefulWidget {
   final SocialPost post;
 
@@ -543,6 +800,13 @@ class _PostDraft {
     required this.caption,
     required this.plateCount,
   });
+}
+
+class _FeedData {
+  final List<SocialPost> posts;
+  final List<FriendSession> friendSessions;
+
+  const _FeedData({required this.posts, required this.friendSessions});
 }
 
 class _EmptyFeed extends StatelessWidget {
